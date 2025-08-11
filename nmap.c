@@ -136,7 +136,7 @@ void *listen_arp_replies(void *arg) {
    return NULL;
 }
 
-
+//try tcp connection on different ports to find open ports
 void *tcp_connect_thread(void *arg) {
    tcp_args_t *args = (tcp_args_t *)arg;
    in_addr_t ip = args->ip;
@@ -152,7 +152,6 @@ void *tcp_connect_thread(void *arg) {
            printf("Port %d open on %s\n", ports[i], network_to_presentation(ip));
        }
    }
-
    return NULL;
 }
 
