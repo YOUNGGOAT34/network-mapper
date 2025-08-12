@@ -23,8 +23,8 @@ int main() {
     inet_ntop(AF_INET, &ip, ip_str, sizeof(ip_str));
     inet_ntop(AF_INET, &mask, mask_str, sizeof(mask_str));
 
-    char *start_ip=network_to_presentation(start_ip_address);
-    char *end_ip=network_to_presentation(end_ip_address);
+    int8 *start_ip=network_to_presentation(start_ip_address);
+    int8 *end_ip=network_to_presentation(end_ip_address);
 
     printf("Interface IP: %s\n", ip_str);
     printf("Netmask:      %s\n", mask_str);
@@ -33,12 +33,12 @@ int main() {
    free(start_ip);
    free(end_ip);
 
-    int arp_sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
+    int arp_sock = socket(AF_PACKET, SOCK_RAW, htons(ARP_PROTOCAL));
     if (arp_sock < 0) {
         perror("socket");
         return 1;
     }
-     
+       
     pthread_t arp_listener;
     pthread_create(&arp_listener, NULL, listen_arp_replies, (void *)(uintptr_t)arp_sock);
      
@@ -66,18 +66,27 @@ int main() {
     
         pthread_create(&sender_threads[i], NULL, arp_sender_thread, args);
     }
+
+
     
    for (int i = 0; i < ARP_SENDER_THREADS; i++) {
       pthread_join(sender_threads[i], NULL);
   }
 
 
+          
+           for (int i = 0; i < MAXTHREADPOOL; i++) {
+            pthread_join(pool[i], NULL);
+        }
 
 
+   
+
+   
     pthread_cancel(arp_listener);
     pthread_join(arp_listener, NULL);
     close(arp_sock);
-
+     
     return 0;
 }
 
