@@ -26,13 +26,14 @@
 #define PROTOSIZE 4
 #define  MACSIZE  6
 
-#define MAXTHREADPOOL 5
+#define MAXTHREADPOOL 30
+#define PORTSPERTASK 100
 #define ARPHTYPE_ETHER 1
 #define ETHERTYPE_IP 0x0800
 #define  ARPOPCODE_REQUEST 1
 #define ARPOPCODE_REPLY 2
 #define ARP_PROTOCAL 0x0806
-#define MAXPORT 1023
+#define MAXPORT 65535
 
 
 
@@ -100,5 +101,5 @@ void *listen_arp_replies(void *);
 void compute_subnet_range(in_addr_t , in_addr_t ); 
 void *arp_sender_thread(void *) ;
 void* tcp_port_range_scan(void* arg) ;
-
+void* tcp_task_worker(void* arg);
 

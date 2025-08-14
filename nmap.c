@@ -8,8 +8,11 @@ Don't want to use the inet_ntop() function since this function takes extra param
 pthread_t pool[MAXTHREADPOOL];
 pthread_t thread;
 in_addr_t start_ip_address, end_ip_address;
-
+port_range_t *task_queue;
+int total_tasks;
+int current_task = 0;
 pthread_mutex_t port_mutex=PTHREAD_MUTEX_INITIALIZER;
+
 
 int8 *network_to_presentation(in_addr_t ip_address){
    /*
@@ -130,20 +133,52 @@ void *listen_arp_replies(void *arg) {
 
 
             
-            uint16_t ports_per_thread = MAXPORT / MAXTHREADPOOL;
-            
-            for (int i = 0; i < MAXTHREADPOOL; i++) {
-                port_range_t* range = malloc(sizeof(port_range_t));
-                range->ip = ip;
-                range->start_port = i * ports_per_thread + 1;
-                range->end_port = (i == MAXTHREADPOOL - 1) ? MAXPORT : (range->start_port + ports_per_thread - 1);
-            
-                pthread_create(&pool[i], NULL, tcp_port_range_scan, range);
+           
+            total_tasks=(MAXPORT+PORTSPERTASK-1)/PORTSPERTASK;
+            port_range_t *tasks=malloc(sizeof(port_range_t)*total_tasks);
+            task_queue=tasks;
+
+           
+            int port=1;
+
+            for(int i=0;i<total_tasks;i++){
+                tasks[i].start_port=port;
+                tasks[i].end_port=port+PORTSPERTASK-1;
+                tasks[i].ip=ip;
+                if(tasks[i].end_port > MAXPORT){
+                    tasks[i].end_port=MAXPORT;
+                }
+
+                port+=PORTSPERTASK;
+
+               
+            }
+             
+            for(int i=0;i<MAXTHREADPOOL;i++){
+                 pthread_create(&pool[i],NULL,tcp_task_worker,NULL);
             }
             
           
       
       
+   }
+
+   return NULL;
+}
+
+
+void* tcp_task_worker(void* arg) {
+   while (1) {
+       pthread_mutex_lock(&port_mutex);
+       if (current_task >= total_tasks) {
+           pthread_mutex_unlock(&port_mutex);
+           break;
+       }
+
+       port_range_t task = task_queue[current_task++];
+       pthread_mutex_unlock(&port_mutex);
+
+       tcp_port_range_scan(&task);
    }
 
    return NULL;
@@ -167,7 +202,8 @@ void* tcp_port_range_scan(void* arg) {
        struct timeval timeout = {0, 100000};
        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
        setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-
+       
+       printf("scanning port: %d\n",port);
        int result = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
        close(sockfd);
 
@@ -178,7 +214,7 @@ void* tcp_port_range_scan(void* arg) {
        }
    }
 
-   free(range);
+ 
    return NULL;
 }
 
