@@ -1,3 +1,6 @@
+#ifndef NMAP_H
+#define NMAP_H
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stddef.h>
@@ -102,4 +105,6 @@ void compute_subnet_range(in_addr_t , in_addr_t );
 void *arp_sender_thread(void *) ;
 void* tcp_port_range_scan(void* arg) ;
 void* tcp_task_worker(void* arg);
+
+#endif
 
