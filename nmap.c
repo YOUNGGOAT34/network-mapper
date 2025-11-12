@@ -1,9 +1,5 @@
 #include "nmap.h"
 #include <stdio.h>
-/*
-this function will take a network byte order address and convert it to a dotted format string
-Don't want to use the inet_ntop() function since this function takes extra parameters and we only need one in this case
-*/
 
 pthread_t pool[MAXTHREADPOOL];
 pthread_t thread;
@@ -12,6 +8,11 @@ port_range_t *task_queue;
 int total_tasks;
 int current_task = 0;
 pthread_mutex_t port_mutex=PTHREAD_MUTEX_INITIALIZER;
+/*
+this function will take a network byte order address and convert it to a dotted format string
+Don't want to use the inet_ntop() function since this function takes extra parameters and we only need one in this case
+*/
+
 
 
 int8 *network_to_presentation(in_addr_t ip_address){
@@ -203,7 +204,7 @@ void* tcp_port_range_scan(void* arg) {
        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
        setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
        
-       printf("scanning port: %d\n",port);
+      //  printf("scanning port: %d\n",port);
        int result = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
        close(sockfd);
 
