@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <inttypes.h>
 
 
 
@@ -102,7 +103,7 @@ void *connect_to_server(void *arg){
         i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
         
         if(connect_status==0){
-              printf("Port open %hd\n",*port);
+              printf("Port open%"PRIu16 "\n",*port);
         }else{
              if(errno==ECONNREFUSED){
                 
