@@ -6,6 +6,7 @@
 
 
 #define MAX_BUFFER 250
+#define NUM_OF_THREADS 10
 
 typedef char u8;
 typedef unsigned short int u16;
@@ -18,6 +19,14 @@ typedef signed char i8;
 typedef signed int i32;
 
 
+typedef struct{
+   
+   u16 start;
+   u16 end;
+
+}port_range;
+
+
 //ring buffer :will havean array of ports to scan ,a circular queue
 
 typedef struct {
@@ -28,7 +37,7 @@ typedef struct {
 
 
 void run(u16 start_port,u16 end_port);
-void connect_to_server(u16 port);
+// void connect_to_server(u16 port);
 
 void initialize_buffer(buffer* b);
 bool push(buffer* b,u16 *port);
