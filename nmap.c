@@ -105,9 +105,7 @@ void *connect_to_server(void *arg){
         if(connect_status==0){
               printf("Port open%"PRIu16 "\n",*port);
         }else{
-             if(errno==ECONNREFUSED){
-                
-             }else{
+             if(errno!=ECONNREFUSED){
                  printf("Port filtered : (%s)\n",strerror(errno));
              }
         }
