@@ -6,8 +6,11 @@
 #define MAC_LENGTH 6
 #define IP4_LENGTH 4
 
-u8 ethernet_buffer[ETHERNET_PACKET_lENGTH];
 
 
-void create_raw_ethernet_bytes(void);
+
+
+
+// u8 *create_raw_ethernet_bytes(in_addr_t *target_ip);
+void generate_subnet_ip_addresses();
 #endif

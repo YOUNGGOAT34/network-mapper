@@ -3,6 +3,7 @@
 #include "nmap.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "arp_request.h"
 
 
 /*
@@ -24,7 +25,8 @@ int main(i32 argc,const u8 *argv[]) {
     i32 start_port=strtol(argv[1],NULL,0);
     i32 end_port=strtol(argv[2],NULL,0);
 
-     run(start_port,end_port);
+    //  run(start_port,end_port);
+    generate_subnet_ip_addresses();
 
    
     return 0;
