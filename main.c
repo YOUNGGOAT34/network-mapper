@@ -13,7 +13,7 @@
 
 
 
-int main(i32 argc,const u8 *argv[]) {
+int main(i32 argc,const i8 *argv[]) {
   
 
     if(argc<2) {

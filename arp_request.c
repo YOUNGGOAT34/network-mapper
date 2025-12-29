@@ -53,24 +53,6 @@ i32 get_interface_ip_mask() {
 
 
 
-u8 *print_ip(u32 ip){
-    ip=ntohl(ip);
-    u8 *str=malloc(16);
-    if(!str){
-        //  error("Failed to allocate memory for the IP return string\n");
-    }
-    snprintf(str,16,"%u.%u.%u.%u",
-      (ip>>24) & 0xFF,
-      (ip>>16) & 0xFF,
-      (ip>>8) & 0xFF,
-       ip & 0xFF
-    );
-
-    return str;
-}
-
-
-
 void compute_subnet_range() {
    start_ip_address = current_ip_address & subnet_mask;
    end_ip_address = start_ip_address | ~subnet_mask;
@@ -81,14 +63,38 @@ void compute_subnet_range() {
 
 
 
+void *send_arp_requests(void *arg){
+
+    i32 sockfd=*(i32 *)arg;
 
 
+    struct ifreq ifrr;
+    memset(&ifrr,0,sizeof(ifrr));
 
-void *produce_ip_addresses(void *arg){
+    strncpy(ifrr.ifr_name,"wlan0",IFNAMSIZ);
 
-    (void)arg;
+    if(ioctl(sockfd,SIOCGIFINDEX,&ifrr)<0){
+        fprintf(stderr,"Error getting the interface index %s\n",strerror(errno));
+        return NULL;
+    }
 
-     i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
+    i32 if_index=ifrr.ifr_ifindex;
+
+    struct sockaddr_ll addr={0};
+
+    addr.sll_family=AF_PACKET;
+    addr.sll_halen=ETH_ALEN;
+    addr.sll_ifindex=if_index;
+    addr.sll_protocol=htons(ETH_P_ARP);
+
+    //bind the socket to wlan0 interface(avoids listening on all interfaces)
+    if(bind(sockfd,(struct sockaddr *)&addr,sizeof(addr))<0){
+        fprintf(stderr,"Error Binding to wlan0 interface %s\n",strerror(errno));
+        return NULL;
+    }
+  
+    memset(addr.sll_addr,0xff,MAC_LENGTH);
+     
 
 
     while(true){
@@ -105,43 +111,13 @@ void *produce_ip_addresses(void *arg){
              *target_ip=htonl(current_ip);
 
             current_ip+=1;
-           
-            //free the memory allocated by print ip
-            // printf("%s\n",print_ip(htonl(current_ip)));
+      
             u8 *raw_arp_bytes=create_raw_ethernet_bytes(target_ip);
 
             pthread_mutex_unlock(&CurrentIpMutex);
-
-
-            if(sockfd<0){
-                fprintf(stderr,"error creating a socket %s\n",strerror(errno));
-                free(raw_arp_bytes);
-                free(target_ip);
-                break;
-            }
+    
              
-            struct ifreq ifrr;
-            memset(&ifrr,0,sizeof(ifrr));
-
-            strncpy(ifrr.ifr_name,"wlan0",IFNAMSIZ);
-
-            if(ioctl(sockfd,SIOCGIFINDEX,&ifrr)<0){
-                fprintf(stderr,"Error getting the interface index %s\n",strerror(errno));
-                free(raw_arp_bytes);
-                free(target_ip);
-                break;
-            }
-
-            i32 if_index=ifrr.ifr_ifindex;
-
-            struct sockaddr_ll addr={0};
-
-            addr.sll_family=AF_PACKET;
-            addr.sll_halen=ETH_ALEN;
-            addr.sll_ifindex=if_index;
-            addr.sll_protocol=htons(ETH_P_ARP);
-
-            memset(addr.sll_addr,0xff,MAC_LENGTH);
+            
 
             ssize_t sent_bytes=sendto(sockfd,raw_arp_bytes,ETHERNET_PACKET_lENGTH,0,(struct sockaddr *)&addr,sizeof(addr));
 
@@ -154,95 +130,93 @@ void *produce_ip_addresses(void *arg){
             }
 
 
+        free(raw_arp_bytes);
+        free(target_ip);
+        
+    }
+  
+
+
+  
+    return NULL;
+    
+}
+
+void *listen_for_arp_replies(void *arg){
+      i32 sockfd=*(i32 *)arg;
+
+       u8 response_buffer[RESPONSE_BUFFER];
+
         fd_set fds;
         struct timeval tv;
 
-        FD_ZERO(&fds);
-        FD_SET(sockfd, &fds);
 
-        tv.tv_sec = 0;
-        tv.tv_usec = 200000; 
+       while(true){
 
-        int ret = select(sockfd + 1, &fds, NULL, NULL, &tv);
+             
+            FD_ZERO(&fds);
+            FD_SET(sockfd, &fds);
+
+            tv.tv_sec = 1;
+            tv.tv_usec = 0; 
 
 
+            int select_result = select(sockfd + 1, &fds, NULL, NULL, &tv);
 
-        if (ret == 0) {
+            if(select_result==0){
+                continue;
+            }
 
-                free(raw_arp_bytes);
-                free(target_ip);
-            continue;
+            if(select_result<0){
+                 fprintf(stderr,"Select error: %s",strerror(errno));
+                 break;
+            }
 
-        }else if (ret > 0) {
-    
-        }else {
-                fprintf(stderr,"Select error: %s",strerror(errno));
-                free(raw_arp_bytes);
-                free(target_ip);
-                break;
+            ssize_t len = recv(sockfd,response_buffer, sizeof(response_buffer), 0);
+
+            if (len < 0) {
+
+            fprintf(stderr,"Errro receiving ARP reply: %s\n",strerror(errno));
+            break;
         }
 
+        struct ethhdr *eth = (struct ethhdr *)response_buffer;
 
-    u8 recvbuf[65536];
+        if (ntohs(eth->h_proto) != ETH_P_ARP){
+                continue;
+        }
 
-    ssize_t len;
-
-    if (ret > 0 && FD_ISSET(sockfd, &fds)) {
-       len = recv(sockfd, recvbuf, sizeof(recvbuf), 0);
-       
-    }
-
-    if (len < 0) {
-
-        free(raw_arp_bytes);
-        free(target_ip);
-        fprintf(stderr,"Errro receiving ARP reply: %s\n",strerror(errno));
-        break;
-    }
-
-  
-
-    struct ethhdr *eth = (struct ethhdr *)recvbuf;
-
-    if (ntohs(eth->h_proto) != ETH_P_ARP){
-             free(raw_arp_bytes);
-             free(target_ip);
-             continue;
-    }
-        
-
-    struct arphdr *arp =(struct arphdr *)(recvbuf + sizeof(struct ethhdr));
+      struct arphdr *arp =(struct arphdr *)(response_buffer + sizeof(struct ethhdr));
      
-    if (ntohs(arp->ar_op) != ARPOP_REPLY){
-        free(raw_arp_bytes);
-        free(target_ip);
+      if (ntohs(arp->ar_op) != ARPOP_REPLY){
         continue;
 
-    }
+     }
+
 
     /* payload */
-    u8 *payload = recvbuf + sizeof(struct ethhdr) + sizeof(struct arphdr);
+    u8 *payload = response_buffer+ sizeof(struct ethhdr) + sizeof(struct arphdr);
 
     u8 *sha = payload;
     u8 *spa = sha + MAC_LENGTH;
     u8 *tha = spa + IP4_LENGTH;
     u8 *tpa = tha + MAC_LENGTH;
 
+    //check if the response was intended for this machine
 
-
-    if (memcmp(tpa, &current_ip_address, IP4_LENGTH) != 0) {
-        free(raw_arp_bytes);
-        free(target_ip);
-        continue;
-    }
-
-    /* Ensure it is from the IP we queried */
-    if (memcmp(spa, target_ip, IP4_LENGTH) != 0){
-        free(raw_arp_bytes);
-        free(target_ip);
+    if(memcmp(tpa,&current_ip_address,IP4_LENGTH)!=0){
          continue;
     }
 
+
+    u32 spa_;
+    memcpy(&spa_,spa,IP4_LENGTH);
+
+    
+    //check if the arp response comes from the host within the range
+    if(ntohl(spa_)<start_ip_address || ntohl(spa_)>end_ip_address){
+            continue;
+    }
 
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
@@ -253,19 +227,26 @@ void *produce_ip_addresses(void *arg){
     );
 
 
-        free(raw_arp_bytes);
-        free(target_ip);
-        
-    }
 
-
-    close(sockfd);
-    return NULL;
     
+       }
+
+      return NULL;
 }
 
 
+
 void generate_subnet_ip_addresses(){
+
+
+    i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
+
+
+    if(sockfd<0){
+            fprintf(stderr,"error creating a socket %s\n",strerror(errno));
+            
+                return;
+            }
 
     if(get_interface_ip_mask()!=0){
          fprintf(stderr,"Error retrieving interface's subnet mask,mac address and ip address :(%s)\n",strerror(errno));
@@ -279,19 +260,28 @@ void generate_subnet_ip_addresses(){
     current_ip=start_ip_address;
 
 
-        pthread_t threads[10];
+        pthread_t threads[2];
 
-        for(i32 i=0;i<10;i++){
-              pthread_create(&threads[i],NULL,&produce_ip_addresses,NULL);
+        for(i32 i=0;i<2;i++){
+              if(i%2==0){
+
+                  pthread_create(&threads[i],NULL,&send_arp_requests,&sockfd);
+              }else{
+                    pthread_create(&threads[i],NULL,&listen_for_arp_replies,&sockfd);
+              }
         }
 
-        for(i32 i=0;i<10;i++){
+        for(i32 i=0;i<2;i++){
               pthread_join(threads[i],NULL);
         }
 
         pthread_mutex_destroy(&CurrentIpMutex);
 
+          close(sockfd);
+        
 }
+
+
 
 u8* create_raw_ethernet_bytes(in_addr_t *target_ip){
 

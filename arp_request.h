@@ -4,6 +4,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+
+#define RESPONSE_BUFFER 65536
 #define ETHERNET_PACKET_lENGTH 42
 #define MAC_LENGTH 6
 #define IP4_LENGTH 4
