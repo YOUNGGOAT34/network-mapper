@@ -7,15 +7,22 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include<stdio.h>
+#include <errno.h>
+#include <pthread.h>
+#include <sys/select.h>
 #include "arp_request.h"
 
 
 
     in_addr_t current_ip_address;//ip address of this machine
     in_addr_t start_ip_address;
+     in_addr_t current_ip;//for looping through the addresses
     in_addr_t end_ip_address;
     in_addr_t subnet_mask;//subnet mask of the interface
     u8 mac_address[MAC_LENGTH];//mac address of this machine
+
+
+    pthread_mutex_t CurrentIpMutex;
 
 
 i32 get_interface_ip_mask() {
@@ -70,52 +77,200 @@ void compute_subnet_range() {
    start_ip_address = (ntohl(start_ip_address));
    end_ip_address =(ntohl(end_ip_address) - 1);
 
-   // range *r=malloc(sizeof(range));
-   // r->start=(start_ip_address);
-   // r->end=(end_ip_address);
-   // return r;
+}
+
+
+
+
+
+
+void *produce_ip_addresses(void *arg){
+
+    (void)arg;
+
+    while(true){
+
+        in_addr_t *target_ip=malloc(sizeof(in_addr_t));
+
+        pthread_mutex_lock(&CurrentIpMutex);
+
+        if(current_ip>end_ip_address-1){
+             pthread_mutex_unlock(&CurrentIpMutex);
+             break;
+          }
+
+             *target_ip=htonl(current_ip);
+
+            current_ip+=1;
+           
+            //free the memory allocated by print ip
+            // printf("%s\n",print_ip(htonl(current_ip)));
+            u8 *raw_arp_bytes=create_raw_ethernet_bytes(target_ip);
+
+            pthread_mutex_unlock(&CurrentIpMutex);
+
+            i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
+
+            if(sockfd<0){
+                fprintf(stderr,"error creating a socketn %s\n",strerror(errno));
+                break;
+            }
+             
+            struct ifreq ifrr;
+            memset(&ifrr,0,sizeof(ifrr));
+
+            strncpy(ifrr.ifr_name,"wlan0",IFNAMSIZ);
+
+            if(ioctl(sockfd,SIOCGIFINDEX,&ifrr)<0){
+                fprintf(stderr,"Error getting the interface index %s\n",strerror(errno));
+                break;
+            }
+
+            i32 if_index=ifrr.ifr_ifindex;
+
+            struct sockaddr_ll addr={0};
+
+            addr.sll_family=AF_PACKET;
+            addr.sll_halen=ETH_ALEN;
+            addr.sll_ifindex=if_index;
+            addr.sll_protocol=htons(ETH_P_ARP);
+
+            memset(addr.sll_addr,0xff,MAC_LENGTH);
+
+            ssize_t sent_bytes=sendto(sockfd,raw_arp_bytes,ETHERNET_PACKET_lENGTH,0,(struct sockaddr *)&addr,sizeof(addr));
+
+            if(sent_bytes<0){
+                  fprintf(stderr,"Error sending arp packet\n");
+                  break;
+
+            }
+
+
+
+fd_set fds;
+struct timeval tv;
+
+FD_ZERO(&fds);
+FD_SET(sockfd, &fds);
+
+tv.tv_sec = 0;
+tv.tv_usec = 200000; 
+
+int ret = select(sockfd + 1, &fds, NULL, NULL, &tv);
+
+
+
+if (ret == 0) {
+   continue;
+}
+else if (ret > 0) {
+    
+}
+else {
+    perror("select");
+}
+
+
+    u8 recvbuf[65536];
+
+  
+    ssize_t len;
+
+  if (ret > 0 && FD_ISSET(sockfd, &fds)) {
+       len = recv(sockfd, recvbuf, sizeof(recvbuf), 0);
+    if (len < 0) continue;
+}
+    if (len < 0) {
+        perror("recv");
+        continue;
+    }
+
+    printf("Here\n");
+
+    struct ethhdr *eth = (struct ethhdr *)recvbuf;
+
+    if (ntohs(eth->h_proto) != ETH_P_ARP)
+        continue;
+
+    struct arphdr *arp =
+        (struct arphdr *)(recvbuf + sizeof(struct ethhdr));
+
+    if (ntohs(arp->ar_op) != ARPOP_REPLY)
+        continue;
+
+    /* payload */
+    u8 *payload = recvbuf + sizeof(struct ethhdr) + sizeof(struct arphdr);
+
+    u8 *sha = payload;
+    u8 *spa = sha + MAC_LENGTH;
+    u8 *tha = spa + IP4_LENGTH;
+    u8 *tpa = tha + MAC_LENGTH;
+
+    struct in_addr ip;
+    memcpy(&ip, spa, IP4_LENGTH);
+
+    printf("ARP reply from %s | MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+        inet_ntoa(ip),
+        sha[0], sha[1], sha[2], sha[3], sha[4], sha[5]
+    );
+
+
+
+
+        free(raw_arp_bytes);
+      
+
+
+        free(target_ip);
+        
+
+    }
+    
+    return NULL;
+    
 }
 
 
 void generate_subnet_ip_addresses(){
-    get_interface_ip_mask();
+
+    if(get_interface_ip_mask()!=0){
+         fprintf(stderr,"Error retrieving interface's subnet mask,mac address and ip address\n");
+         return ;
+     }
+
     compute_subnet_range();
 
-    in_addr_t current_ip=start_ip_address;
-
+    pthread_mutex_init(&CurrentIpMutex,NULL);
     
-    
-        printf("start: %s\n",print_ip(htonl(start_ip_address)));
-        printf("end ip %s\n",print_ip(htonl(end_ip_address)));
-        printf("current ip %s\n",print_ip(htonl(current_ip)));
-        // current_ip+=1;
-        // printf("current ip %s\n",print_ip(htonl(current_ip)));
-        // return;
-       
-        while(true){
-
-          
-           
-            current_ip+=1;
-             printf("%s\n",print_ip(htonl(current_ip)));
+    current_ip=start_ip_address;
 
 
-              if(current_ip>end_ip_address){
-                break;
-              }
+        pthread_t threads[10];
+
+        for(i32 i=0;i<10;i++){
+              pthread_create(&threads[i],NULL,&produce_ip_addresses,NULL);
         }
-    
+
+ 
+       
+
+        for(i32 i=0;i<10;i++){
+              pthread_join(threads[i],NULL);
+        }
+
+        pthread_mutex_destroy(&CurrentIpMutex);
+
+   
+     
 
 }
 
 u8* create_raw_ethernet_bytes(in_addr_t *target_ip){
-    
+
+
     u8 *ethernet_buffer=malloc(ETHERNET_PACKET_lENGTH);
      
-
-    
-
-   //from the buffer's 42 bytes :first 14 are for ethernet header ,the following 28 are for arp header, and the rest payload
+   //from the buffer's 42 bytes :first 14 are for ethernet header ,the following 8 are for arp header, and the rest payload 20 payload
      struct ethhdr *ethernet_header=(struct ethhdr *)ethernet_buffer;
      struct arphdr *arp_header=(struct arphdr *)(ethernet_buffer+sizeof(struct ethhdr));
 
@@ -126,15 +281,11 @@ u8* create_raw_ethernet_bytes(in_addr_t *target_ip){
                protocol :ETH_P_ARP(ARP protocol) in this case(must be in network byte order)
      */
 
-     if(get_interface_ip_mask()!=0){
-         fprintf(stderr,"Error retrieving interface's subnet mask,mac address and ip address\n");
-         return NULL;
-     }
+
 
      memset(ethernet_header->h_dest,0xff,MAC_LENGTH);
      memcpy(ethernet_header->h_source,mac_address,MAC_LENGTH);
      ethernet_header->h_proto=htons(ETH_P_ARP);
-
 
 
      /*
