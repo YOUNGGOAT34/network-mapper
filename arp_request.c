@@ -14,15 +14,15 @@
 
 
 
-    in_addr_t current_ip_address;//ip address of this machine
-    in_addr_t start_ip_address;
-     in_addr_t current_ip;//for looping through the addresses
-    in_addr_t end_ip_address;
-    in_addr_t subnet_mask;//subnet mask of the interface
-    u8 mac_address[MAC_LENGTH];//mac address of this machine
+in_addr_t current_ip_address;//ip address of this machine
+in_addr_t start_ip_address;
+in_addr_t current_ip;//for looping through the addresses
+in_addr_t end_ip_address;
+in_addr_t subnet_mask;//subnet mask of the interface
+u8 mac_address[MAC_LENGTH];//mac address of this machine
 
 
-    pthread_mutex_t CurrentIpMutex;
+pthread_mutex_t CurrentIpMutex;
 
 
 i32 get_interface_ip_mask() {
@@ -146,7 +146,7 @@ void *produce_ip_addresses(void *arg){
             ssize_t sent_bytes=sendto(sockfd,raw_arp_bytes,ETHERNET_PACKET_lENGTH,0,(struct sockaddr *)&addr,sizeof(addr));
 
             if(sent_bytes<0){
-                  fprintf(stderr,"Error sending arp packet %s\n",strerror(errno));
+                fprintf(stderr,"Error sending arp packet %s\n",strerror(errno));
                 free(raw_arp_bytes);
                 free(target_ip);
                   break;
@@ -185,7 +185,6 @@ void *produce_ip_addresses(void *arg){
 
     u8 recvbuf[65536];
 
-  
     ssize_t len;
 
     if (ret > 0 && FD_ISSET(sockfd, &fds)) {
@@ -199,7 +198,6 @@ void *produce_ip_addresses(void *arg){
         free(target_ip);
         fprintf(stderr,"Errro receiving ARP reply: %s\n",strerror(errno));
         break;
-
     }
 
   
@@ -249,18 +247,15 @@ void *produce_ip_addresses(void *arg){
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
 
-    printf("ARP reply from %s | MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
+    printf("Host found ,ip: %s | MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
         inet_ntoa(ip),
         sha[0], sha[1], sha[2], sha[3], sha[4], sha[5]
     );
 
 
-
-
         free(raw_arp_bytes);
         free(target_ip);
         
-
     }
 
 
@@ -273,7 +268,7 @@ void *produce_ip_addresses(void *arg){
 void generate_subnet_ip_addresses(){
 
     if(get_interface_ip_mask()!=0){
-         fprintf(stderr,"Error retrieving interface's subnet mask,mac address and ip address\n");
+         fprintf(stderr,"Error retrieving interface's subnet mask,mac address and ip address :(%s)\n",strerror(errno));
          return ;
      }
 
@@ -290,17 +285,11 @@ void generate_subnet_ip_addresses(){
               pthread_create(&threads[i],NULL,&produce_ip_addresses,NULL);
         }
 
- 
-       
-
         for(i32 i=0;i<10;i++){
               pthread_join(threads[i],NULL);
         }
 
         pthread_mutex_destroy(&CurrentIpMutex);
-
-   
-     
 
 }
 
