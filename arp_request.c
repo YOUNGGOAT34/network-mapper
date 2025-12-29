@@ -88,6 +88,9 @@ void *produce_ip_addresses(void *arg){
 
     (void)arg;
 
+     i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
+
+
     while(true){
 
         in_addr_t *target_ip=malloc(sizeof(in_addr_t));
@@ -109,10 +112,11 @@ void *produce_ip_addresses(void *arg){
 
             pthread_mutex_unlock(&CurrentIpMutex);
 
-            i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
 
             if(sockfd<0){
-                fprintf(stderr,"error creating a socketn %s\n",strerror(errno));
+                fprintf(stderr,"error creating a socket %s\n",strerror(errno));
+                free(raw_arp_bytes);
+                free(target_ip);
                 break;
             }
              
@@ -123,6 +127,8 @@ void *produce_ip_addresses(void *arg){
 
             if(ioctl(sockfd,SIOCGIFINDEX,&ifrr)<0){
                 fprintf(stderr,"Error getting the interface index %s\n",strerror(errno));
+                free(raw_arp_bytes);
+                free(target_ip);
                 break;
             }
 
@@ -140,35 +146,41 @@ void *produce_ip_addresses(void *arg){
             ssize_t sent_bytes=sendto(sockfd,raw_arp_bytes,ETHERNET_PACKET_lENGTH,0,(struct sockaddr *)&addr,sizeof(addr));
 
             if(sent_bytes<0){
-                  fprintf(stderr,"Error sending arp packet\n");
+                  fprintf(stderr,"Error sending arp packet %s\n",strerror(errno));
+                free(raw_arp_bytes);
+                free(target_ip);
                   break;
 
             }
 
 
+        fd_set fds;
+        struct timeval tv;
 
-fd_set fds;
-struct timeval tv;
+        FD_ZERO(&fds);
+        FD_SET(sockfd, &fds);
 
-FD_ZERO(&fds);
-FD_SET(sockfd, &fds);
+        tv.tv_sec = 0;
+        tv.tv_usec = 200000; 
 
-tv.tv_sec = 0;
-tv.tv_usec = 200000; 
-
-int ret = select(sockfd + 1, &fds, NULL, NULL, &tv);
-
+        int ret = select(sockfd + 1, &fds, NULL, NULL, &tv);
 
 
-if (ret == 0) {
-   continue;
-}
-else if (ret > 0) {
+
+        if (ret == 0) {
+
+                free(raw_arp_bytes);
+                free(target_ip);
+            continue;
+
+        }else if (ret > 0) {
     
-}
-else {
-    perror("select");
-}
+        }else {
+                fprintf(stderr,"Select error: %s",strerror(errno));
+                free(raw_arp_bytes);
+                free(target_ip);
+                break;
+        }
 
 
     u8 recvbuf[65536];
@@ -176,27 +188,39 @@ else {
   
     ssize_t len;
 
-  if (ret > 0 && FD_ISSET(sockfd, &fds)) {
+    if (ret > 0 && FD_ISSET(sockfd, &fds)) {
        len = recv(sockfd, recvbuf, sizeof(recvbuf), 0);
-    if (len < 0) continue;
-}
-    if (len < 0) {
-        perror("recv");
-        continue;
+       
     }
 
-    printf("Here\n");
+    if (len < 0) {
+
+        free(raw_arp_bytes);
+        free(target_ip);
+        fprintf(stderr,"Errro receiving ARP reply: %s\n",strerror(errno));
+        break;
+
+    }
+
+  
 
     struct ethhdr *eth = (struct ethhdr *)recvbuf;
 
-    if (ntohs(eth->h_proto) != ETH_P_ARP)
+    if (ntohs(eth->h_proto) != ETH_P_ARP){
+             free(raw_arp_bytes);
+             free(target_ip);
+             continue;
+    }
+        
+
+    struct arphdr *arp =(struct arphdr *)(recvbuf + sizeof(struct ethhdr));
+     
+    if (ntohs(arp->ar_op) != ARPOP_REPLY){
+        free(raw_arp_bytes);
+        free(target_ip);
         continue;
 
-    struct arphdr *arp =
-        (struct arphdr *)(recvbuf + sizeof(struct ethhdr));
-
-    if (ntohs(arp->ar_op) != ARPOP_REPLY)
-        continue;
+    }
 
     /* payload */
     u8 *payload = recvbuf + sizeof(struct ethhdr) + sizeof(struct arphdr);
@@ -205,6 +229,22 @@ else {
     u8 *spa = sha + MAC_LENGTH;
     u8 *tha = spa + IP4_LENGTH;
     u8 *tpa = tha + MAC_LENGTH;
+
+
+
+    if (memcmp(tpa, &current_ip_address, IP4_LENGTH) != 0) {
+        free(raw_arp_bytes);
+        free(target_ip);
+        continue;
+    }
+
+    /* Ensure it is from the IP we queried */
+    if (memcmp(spa, target_ip, IP4_LENGTH) != 0){
+        free(raw_arp_bytes);
+        free(target_ip);
+         continue;
+    }
+
 
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
@@ -218,14 +258,13 @@ else {
 
 
         free(raw_arp_bytes);
-      
-
-
         free(target_ip);
         
 
     }
-    
+
+
+    close(sockfd);
     return NULL;
     
 }
