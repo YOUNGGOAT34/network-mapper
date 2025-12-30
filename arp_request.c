@@ -279,7 +279,6 @@ void generate_subnet_ip_addresses(){
 }
 
 
-
 u8* create_raw_ethernet_bytes(in_addr_t *target_ip){
 
 
