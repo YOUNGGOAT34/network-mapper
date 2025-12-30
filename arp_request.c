@@ -22,7 +22,6 @@ in_addr_t subnet_mask;//subnet mask of the interface
 u8 mac_address[MAC_LENGTH];//mac address of this machine
 
 
-pthread_mutex_t CurrentIpMutex;
 
 
 i32 get_interface_ip_mask() {
@@ -145,10 +144,10 @@ void *listen_for_arp_replies(void *arg){
         fd_set fds;
         struct timeval tv;
 
+        u8 count=0;
 
        while(true){
 
-             
             FD_ZERO(&fds);
             FD_SET(sockfd, &fds);
 
@@ -158,9 +157,18 @@ void *listen_for_arp_replies(void *arg){
 
             int select_result = select(sockfd + 1, &fds, NULL, NULL, &tv);
 
+            //if there is nothing for 5 seconds exit this thread
+
             if(select_result==0){
+                if(count==5){
+                    break;
+                }
+                count+=1;
+                printf("Here\n");
                 continue;
             }
+
+            count=0;
 
             if(select_result<0){
                  fprintf(stderr,"Select error: %s",strerror(errno));
@@ -183,7 +191,7 @@ void *listen_for_arp_replies(void *arg){
 
       struct arphdr *arp =(struct arphdr *)(response_buffer + sizeof(struct ethhdr));
      
-      if (ntohs(arp->ar_op) != ARPOP_REPLY){
+    if (ntohs(arp->ar_op) != ARPOP_REPLY){
         continue;
 
      }
@@ -202,7 +210,6 @@ void *listen_for_arp_replies(void *arg){
     if(memcmp(tpa,&current_ip_address,IP4_LENGTH)!=0){
          continue;
     }
-
 
     u32 spa_;
     memcpy(&spa_,spa,IP4_LENGTH);
@@ -247,7 +254,6 @@ void generate_subnet_ip_addresses(){
 
     compute_subnet_range();
 
-    pthread_mutex_init(&CurrentIpMutex,NULL);
     
     current_ip=start_ip_address;
 
@@ -267,7 +273,6 @@ void generate_subnet_ip_addresses(){
               pthread_join(threads[i],NULL);
         }
 
-        pthread_mutex_destroy(&CurrentIpMutex);
 
           close(sockfd);
         
