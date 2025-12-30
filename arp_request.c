@@ -101,10 +101,10 @@ void *send_arp_requests(void *arg){
 
         in_addr_t *target_ip=malloc(sizeof(in_addr_t));
 
-        pthread_mutex_lock(&CurrentIpMutex);
+        // pthread_mutex_lock(&CurrentIpMutex);
 
         if(current_ip>end_ip_address-1){
-             pthread_mutex_unlock(&CurrentIpMutex);
+            //  pthread_mutex_unlock(&CurrentIpMutex);
              break;
           }
 
@@ -114,11 +114,8 @@ void *send_arp_requests(void *arg){
       
             u8 *raw_arp_bytes=create_raw_ethernet_bytes(target_ip);
 
-            pthread_mutex_unlock(&CurrentIpMutex);
+            // pthread_mutex_unlock(&CurrentIpMutex);
     
-             
-            
-
             ssize_t sent_bytes=sendto(sockfd,raw_arp_bytes,ETHERNET_PACKET_lENGTH,0,(struct sockaddr *)&addr,sizeof(addr));
 
             if(sent_bytes<0){
@@ -135,12 +132,10 @@ void *send_arp_requests(void *arg){
         
     }
   
-
-
-  
     return NULL;
     
 }
+
 
 void *listen_for_arp_replies(void *arg){
       i32 sockfd=*(i32 *)arg;
@@ -226,9 +221,6 @@ void *listen_for_arp_replies(void *arg){
         sha[0], sha[1], sha[2], sha[3], sha[4], sha[5]
     );
 
-
-
-    
        }
 
       return NULL;
