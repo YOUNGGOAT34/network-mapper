@@ -26,6 +26,11 @@ typedef unsigned long int u64;
 typedef  char i8;
 typedef signed int i32;
 
+typedef struct {
+    u16 start;
+    u16 end;
+}port_range;
+
 
 typedef struct {
    i32 front;

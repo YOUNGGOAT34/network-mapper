@@ -117,7 +117,7 @@ void *connect_to_server(void *arg){
 
 
         pthread_mutex_lock(&currentPortMutex);
-        while(current_port>=end_port && !done_scanning){
+        while(current_port>end_port && !done_scanning){
             pthread_cond_wait(&scanCond,&currentPortMutex);
         }
 
@@ -128,6 +128,9 @@ void *connect_to_server(void *arg){
        };
          
         u16 port=current_port++;
+
+
+        
         pthread_mutex_unlock(&currentPortMutex);
         
         server_address.sin_family=AF_INET;
@@ -172,8 +175,8 @@ void *scan_ports_in_range(void *arg){
       spawn threads to connect to ports of this ip in a given range
     */
 
-    (void)arg;
-
+    port_range *range=(port_range *)arg;
+   
     while(true){
 
         if(empty(hosts_buffer) && done_scanning){
@@ -188,8 +191,8 @@ void *scan_ports_in_range(void *arg){
         pthread_mutex_lock(&bufferMutex);
         current_alive_ip=pop(hosts_buffer);
         
-        start_port=0;
-        end_port=65535;
+        start_port=range->start;
+        end_port=range->end;
         current_port=start_port;
        
         
@@ -380,7 +383,7 @@ void *listen_for_arp_replies(void *arg){
 
 
 
-void generate_subnet_ip_addresses(){
+void generate_subnet_ip_addresses(port_range *range){
 
     hosts_buffer=malloc(sizeof(alive_hosts_buffer));
     initialize_buffer(hosts_buffer);
@@ -405,9 +408,9 @@ void generate_subnet_ip_addresses(){
     compute_subnet_range();
 
     
-    current_ip=start_ip_address;
+       current_ip=start_ip_address;
 
-
+      
         pthread_t threads[20];
 
         for(i32 i=0;i<10;i++){
@@ -422,7 +425,7 @@ void generate_subnet_ip_addresses(){
              }else{
                    
                    if(i==4){
-                       pthread_create(&threads[i],NULL,&scan_ports_in_range,NULL);
+                       pthread_create(&threads[i],NULL,&scan_ports_in_range,range);
                    }else{
 
                        pthread_create(&threads[i],NULL,&connect_to_server,NULL);
@@ -435,6 +438,7 @@ void generate_subnet_ip_addresses(){
         }
 
 
+         free(range);
           close(sockfd);
         
 }
