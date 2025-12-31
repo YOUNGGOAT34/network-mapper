@@ -10,16 +10,52 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/select.h>
+#include <inttypes.h>
+#include <semaphore.h>
 #include "arp_request.h"
 
 
 
+/*
+   for each alive hosts we scan a range of ports as given by the user
+   A port iterator:
+
+        current_port=shows which port is being scanned at the moment
+        start port=where scanning starts
+        end port=where scanning ends
+*/
+
+
+bool done_scanning=false;
+
+
+alive_hosts_buffer *hosts_buffer;
+
+
+
+u16 start_port;
+u16 end_port;
+u16 current_port;
+
+
+pthread_mutex_t bufferMutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t currentPortMutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t scanCond=PTHREAD_COND_INITIALIZER;
+
+
+
+sem_t  buffer_empty,buffer_full;
+
+
+
 in_addr_t current_ip_address;//ip address of this machine
+in_addr_t current_alive_ip;//the address being scanned currently
 in_addr_t start_ip_address;
 in_addr_t current_ip;//for looping through the addresses
 in_addr_t end_ip_address;
 in_addr_t subnet_mask;//subnet mask of the interface
 u8 mac_address[MAC_LENGTH];//mac address of this machine
+
 
 
 
@@ -59,6 +95,112 @@ void compute_subnet_range() {
    end_ip_address =(ntohl(end_ip_address) - 1);
 
 }
+
+
+
+//for the current ip ,send a tcp connection to a port to check if it is open ,increment the current port
+
+void *connect_to_server(void *arg){
+
+    
+    (void)arg;
+
+   
+    while(true){
+
+
+
+        i32 sockfd=socket(AF_INET,SOCK_STREAM,0);
+        struct sockaddr_in server_address;
+        memset(&server_address,0,sizeof(server_address));
+    
+
+
+        pthread_mutex_lock(&currentPortMutex);
+        while(current_port>=end_port && !done_scanning){
+            pthread_cond_wait(&scanCond,&currentPortMutex);
+        }
+
+       if(done_scanning){
+           pthread_mutex_unlock(&currentPortMutex);
+           close(sockfd);
+           break;
+       };
+         
+        u16 port=current_port++;
+        pthread_mutex_unlock(&currentPortMutex);
+        
+        server_address.sin_family=AF_INET;
+        server_address.sin_addr.s_addr=(current_alive_ip);
+        server_address.sin_port=htons(port);
+         
+       
+        if(sockfd<0){
+             fprintf(stderr,"Failed to create remote socket\n");
+             exit(EXIT_FAILURE);
+        }
+    
+        i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
+        
+        if(connect_status==0){
+              printf("Port open %"PRIu16 "\n",port);
+        }else{
+             if(errno!=ECONNREFUSED){
+                 printf("Port filtered : (%s)\n",strerror(errno));
+             }
+           
+        }
+
+         close(sockfd);
+    
+    }
+
+
+    return NULL;
+
+
+     
+}
+
+
+
+void *scan_ports_in_range(void *arg){
+    /*
+    
+      get the current ip,
+      create an address
+      spawn threads to connect to ports of this ip in a given range
+    */
+
+    (void)arg;
+
+    while(true){
+
+        if(empty(hosts_buffer) && done_scanning){
+            
+             pthread_cond_broadcast(&scanCond);
+             pthread_mutex_unlock(&bufferMutex);
+             break;
+
+        }
+
+        sem_wait(&buffer_full);
+        pthread_mutex_lock(&bufferMutex);
+        current_alive_ip=*pop(hosts_buffer);
+        
+        start_port=0;
+        end_port=65535;
+        current_port=start_port;
+       
+        
+        pthread_cond_broadcast(&scanCond);
+        sem_post(&buffer_empty);
+        pthread_mutex_unlock(&bufferMutex);         
+    }
+
+    return NULL;
+}
+
 
 
 
@@ -155,6 +297,8 @@ void *listen_for_arp_replies(void *arg){
 
             if(select_result==0){
                 if(count==5){
+                    done_scanning=true;
+                    sem_post(&buffer_full);
                     break;
                 }
                 count+=1;
@@ -217,6 +361,13 @@ void *listen_for_arp_replies(void *arg){
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
 
+    sem_wait(&buffer_empty);
+    pthread_mutex_lock(&bufferMutex);
+    push(hosts_buffer,&ip.s_addr);
+    sem_post(&buffer_full);
+    pthread_mutex_unlock(&bufferMutex);
+
+
     printf("Host found ,ip: %s | MAC %02x:%02x:%02x:%02x:%02x:%02x\n",
         inet_ntoa(ip),
         sha[0], sha[1], sha[2], sha[3], sha[4], sha[5]
@@ -231,6 +382,11 @@ void *listen_for_arp_replies(void *arg){
 
 void generate_subnet_ip_addresses(){
 
+    hosts_buffer=malloc(sizeof(alive_hosts_buffer));
+    initialize_buffer(hosts_buffer);
+
+    sem_init(&buffer_empty,0,MAX_HOSTS_BUFFER);
+    sem_init(&buffer_full,0,0);
 
     i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
 
@@ -252,18 +408,29 @@ void generate_subnet_ip_addresses(){
     current_ip=start_ip_address;
 
 
-        pthread_t threads[2];
+        pthread_t threads[9];
 
-        for(i32 i=0;i<2;i++){
-              if(i%2==0){
+        for(i32 i=0;i<10;i++){
+             if(i<2){
 
-                  pthread_create(&threads[i],NULL,&send_arp_requests,&sockfd);
-              }else{
-                    pthread_create(&threads[i],NULL,&listen_for_arp_replies,&sockfd);
-              }
+                 if(i%2==0){
+   
+                     pthread_create(&threads[i],NULL,&send_arp_requests,&sockfd);
+                 }else{
+                       pthread_create(&threads[i],NULL,&listen_for_arp_replies,&sockfd);
+                 }
+             }else{
+                   
+                   if(i==4){
+                       pthread_create(&threads[i],NULL,&scan_ports_in_range,NULL);
+                   }else{
+
+                       pthread_create(&threads[i],NULL,&connect_to_server,NULL);
+                   }
+             }
         }
 
-        for(i32 i=0;i<2;i++){
+        for(i32 i=0;i<10;i++){
               pthread_join(threads[i],NULL);
         }
 
@@ -338,4 +505,48 @@ u8* create_raw_ethernet_bytes(in_addr_t *target_ip){
 
    return ethernet_buffer;
    
+}
+
+
+
+
+//ring buffer functions  implementation
+void initialize_buffer(alive_hosts_buffer* b){
+      b->back=-1;
+      b->front=-1;
+}
+
+bool push(alive_hosts_buffer* b,in_addr_t *ip){
+     if(full(b)){
+         fprintf(stderr,"Full buffer\n");
+         return false;
+     }
+
+     if(b->front==-1){
+         b->front=0;
+         b->back=0;
+     }else{
+         b->back=(b->back+1)%MAX_HOSTS_BUFFER;
+     }
+
+     b->hosts[b->back]=*ip;
+     return true;
+}
+
+in_addr_t *pop(alive_hosts_buffer *b){
+      in_addr_t *ip=malloc(sizeof(in_addr_t));
+      *ip=b->hosts[b->front];
+      if(b->front==b->back){
+          b->front=b->back=-1;
+      }else{
+         b->front=(b->front+1)%MAX_HOSTS_BUFFER;
+      }
+       return ip;
+}
+
+bool full(alive_hosts_buffer *b){
+     return  (b->front==(b->back+1 )% MAX_HOSTS_BUFFER);
+}
+bool empty(alive_hosts_buffer *b){
+     return b->front==-1;
 }
