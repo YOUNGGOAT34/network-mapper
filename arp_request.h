@@ -40,7 +40,7 @@ void generate_subnet_ip_addresses();
 
 void initialize_buffer(alive_hosts_buffer* b);
 bool push(alive_hosts_buffer* b,in_addr_t *ip);
-in_addr_t *pop(alive_hosts_buffer *b);
+in_addr_t pop(alive_hosts_buffer *b);
 bool full(alive_hosts_buffer *);
 bool empty(alive_hosts_buffer *);
 #endif

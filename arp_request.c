@@ -186,7 +186,7 @@ void *scan_ports_in_range(void *arg){
 
         sem_wait(&buffer_full);
         pthread_mutex_lock(&bufferMutex);
-        current_alive_ip=*pop(hosts_buffer);
+        current_alive_ip=pop(hosts_buffer);
         
         start_port=0;
         end_port=65535;
@@ -296,7 +296,7 @@ void *listen_for_arp_replies(void *arg){
             //if there is nothing for 5 seconds exit this thread
 
             if(select_result==0){
-                if(count==5){
+                if(count==3){
                     done_scanning=true;
                     sem_post(&buffer_full);
                     break;
@@ -408,7 +408,7 @@ void generate_subnet_ip_addresses(){
     current_ip=start_ip_address;
 
 
-        pthread_t threads[9];
+        pthread_t threads[20];
 
         for(i32 i=0;i<10;i++){
              if(i<2){
@@ -533,9 +533,8 @@ bool push(alive_hosts_buffer* b,in_addr_t *ip){
      return true;
 }
 
-in_addr_t *pop(alive_hosts_buffer *b){
-      in_addr_t *ip=malloc(sizeof(in_addr_t));
-      *ip=b->hosts[b->front];
+in_addr_t pop(alive_hosts_buffer *b){
+      in_addr_t ip=ip=b->hosts[b->front];
       if(b->front==b->back){
           b->front=b->back=-1;
       }else{
