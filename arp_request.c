@@ -1,4 +1,6 @@
 
+
+#define _GNU_SOURCE
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
 #include <sys/ioctl.h>
@@ -129,7 +131,7 @@ void *connect_to_server(void *arg){
          
         u16 port=current_port++;
 
-
+         printf("Scanning : %"PRIu16"\n",port);
         
         pthread_mutex_unlock(&currentPortMutex);
         
@@ -296,7 +298,7 @@ void *listen_for_arp_replies(void *arg){
 
             int select_result = select(sockfd + 1, &fds, NULL, NULL, &tv);
 
-            //if there is nothing for 5 seconds exit this thread
+            //if there is nothing for q second exit this thread
 
             if(select_result==0){
                 if(count==3){
@@ -411,7 +413,7 @@ void generate_subnet_ip_addresses(port_range *range){
        current_ip=start_ip_address;
 
       
-        pthread_t threads[20];
+        pthread_t threads[10];
 
         for(i32 i=0;i<10;i++){
              if(i<2){
@@ -419,16 +421,20 @@ void generate_subnet_ip_addresses(port_range *range){
                  if(i%2==0){
    
                      pthread_create(&threads[i],NULL,&send_arp_requests,&sockfd);
+                     pthread_setname_np(threads[i],"send_arp_requests");
                  }else{
                        pthread_create(&threads[i],NULL,&listen_for_arp_replies,&sockfd);
+                       pthread_setname_np(threads[i],"listen_for_replies");
                  }
              }else{
                    
-                   if(i==4){
+                   if(i==3){
                        pthread_create(&threads[i],NULL,&scan_ports_in_range,range);
+                       pthread_setname_np(threads[i],"scan_ports");
                    }else{
 
                        pthread_create(&threads[i],NULL,&connect_to_server,NULL);
+                       pthread_setname_np(threads[i],"connect_server");
                    }
              }
         }

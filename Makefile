@@ -1,5 +1,5 @@
 CC :=gcc
-FLAGS :=-Wall -Wextra -O3
+FLAGS :=-Wall -Wextra -O3 -g
 
 BUILD_DIR :=build
 
