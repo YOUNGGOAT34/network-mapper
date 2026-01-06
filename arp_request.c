@@ -19,6 +19,7 @@
 #include "arp_request.h"
 
 
+#define NUM_OF_SCANNER_THREADS 1
 
 /*
    for each alive hosts we scan a range of ports as given by the user
@@ -30,25 +31,29 @@
 */
 
 
+pthread_t threads[NUM_OF_SCANNER_THREADS];
+
+
 atomic_bool done_scanning=false;
 
 alive_hosts_buffer *hosts_buffer;
 
 
-
 u16 start_port;
 u16 end_port;
-atomic_uint current_port;
+u16 current_port;
+
+u8 ready=0;
+u8 done=0;
+bool exit_thread=false;
 
 
+
+pthread_mutex_t scanMutex=PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t bufferMutex=PTHREAD_MUTEX_INITIALIZER;
 
-
-
-
-
-sem_t  buffer_empty,buffer_full;
-
+pthread_cond_t startCond=PTHREAD_COND_INITIALIZER;
+pthread_cond_t doneCond=PTHREAD_COND_INITIALIZER;
 
 
 in_addr_t current_ip_address;//ip address of this machine
@@ -111,72 +116,128 @@ void *connect_to_server(void *arg){
    
     while(true){
 
+        
 
-        u16 port=atomic_fetch_add(&current_port,1);
-
-         
-
-        if( port >end_port){
-          
-           break;
-       };
-
-     
-
-        // printf("Scanning : %"PRIu16"\n",port);
-
+        pthread_mutex_lock(&scanMutex);
 
         
-        i32 sockfd=socket(AF_INET,SOCK_STREAM,0);
 
-
-        fcntl(sockfd,F_SETFL,O_NONBLOCK);
-
-        struct sockaddr_in server_address;
-        memset(&server_address,0,sizeof(server_address));
-    
-    
         
-        server_address.sin_family=AF_INET;
-        server_address.sin_addr.s_addr=(current_alive_ip);
-        server_address.sin_port=htons(port);
-         
-       
-        if(sockfd<0){
-             fprintf(stderr,"Failed to create remote socket\n");
-             continue;
+        if(exit_thread){
+            pthread_mutex_unlock(&scanMutex); 
+            break;
+        }
+        while(!ready){
+            pthread_cond_wait(&startCond,&scanMutex);
         }
 
-          
-        printf("Here %d\n",port);
+        pthread_mutex_unlock(&scanMutex);
+
+
+        while(true){
+
+            pthread_mutex_lock(&scanMutex);
+
+            u16 port=current_port++;
     
-        i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
-
-        printf("Here %d\n",port);
-        
-        if(connect_status==0){
-              printf("Port open %"PRIu16 "\n",port);
-        }else{
-             
-             
-
-             if(errno!=ECONNREFUSED){
-                 printf("Port filtered : (%s)\n",strerror(errno));
-             }
+            if( port >end_port){
+               pthread_mutex_unlock(&scanMutex);
+               break;
+           };
            
+           pthread_mutex_unlock(&scanMutex);
+    
+            // printf("Scanning : %"PRIu16"\n",port);
+    
+            
+            i32 sockfd=socket(AF_INET,SOCK_STREAM,0);
+    
+    
+            fcntl(sockfd,F_SETFL,O_NONBLOCK);
+    
+            struct sockaddr_in server_address;
+            memset(&server_address,0,sizeof(server_address));
+        
+        
+            
+            server_address.sin_family=AF_INET;
+            server_address.sin_addr.s_addr=(current_alive_ip);
+            server_address.sin_port=htons(port);
+             
+           
+            if(sockfd<0){
+                 fprintf(stderr,"Failed to create remote socket\n");
+                 continue;
+            }
+    
+              
+            i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
+    
+            
+            if(connect_status==0){
+                  printf("Port open %"PRIu16 "\n",port);
+            }else if(connect_status<0 && errno !=EINPROGRESS){
+    
+                 if(errno!=ECONNREFUSED){
+                     printf("Port filtered : (%s)\n",strerror(errno));
+                 }
+    
+                 close(sockfd);
+                 continue;
+               
+            }
+    
+    
+            fd_set fds;
+            struct timeval tv;
+    
+            FD_ZERO(&fds);
+            FD_SET(sockfd,&fds);
+    
+            tv.tv_sec=1;
+            tv.tv_usec=0;
+    
+            i32 select_res=select(sockfd+1,NULL,&fds,NULL,&tv);
+    
+            if(select_res<0){
+               fprintf(stderr,"Select error %s\n",strerror(errno));
+            }else if(select_res==0){
+                 close(sockfd);
+                 continue;
+            }else{
+                
+                i32 error;
+                socklen_t len=sizeof(error);
+    
+    
+                getsockopt(sockfd,SOL_SOCKET,SO_ERROR,&error,&len);
+    
+                if(error==0){
+    
+                    printf("Port open %"PRIu16 "\n",port);
+                     
+                }
+    
+            }
+    
+       
+             close(sockfd);
         }
 
 
-         close(sockfd);
+        pthread_mutex_lock(&scanMutex);
+        done++;
+        if(done==NUM_OF_SCANNER_THREADS){
+            pthread_cond_broadcast(&doneCond);
+        }
+        pthread_mutex_unlock(&scanMutex);
 
-     
-    
+
+         
     }
 
     return NULL;
 
-
-     
 }
 
 
@@ -197,11 +258,17 @@ void *scan_ports_in_range(void *arg){
          pthread_mutex_lock(&bufferMutex);
 
         if(empty(hosts_buffer)){
-        
-           
-
+            
+            
             pthread_mutex_unlock(&bufferMutex);
             if(atomic_load(&done_scanning)){
+                
+                pthread_mutex_lock(&scanMutex);
+                ready=1;
+                exit_thread=true;
+                pthread_cond_broadcast(&startCond);
+                pthread_mutex_unlock(&scanMutex);
+                
                 break;
             }
             continue;;
@@ -215,26 +282,31 @@ void *scan_ports_in_range(void *arg){
         start_port=range->start;
         end_port=range->end;
         
-        atomic_store(&current_port,start_port);
         
-        
-        pthread_t threads[1];
-        
-    
-        for(i32 i=0;i<1;i++){
-             
-            pthread_create(&threads[i],NULL,&connect_to_server,NULL);
-            pthread_setname_np(threads[i],"connect_server");
+        pthread_mutex_lock(&scanMutex);
+        current_port=start_port;
+        done=0;
+        ready=1;
+
+        pthread_cond_broadcast(&startCond);
+
+        while(done<NUM_OF_SCANNER_THREADS && !atomic_load(&done_scanning)){
+            printf("Here waiting %d\n",exit_thread);
+            pthread_cond_wait(&doneCond,&scanMutex);
+            printf("Here done  waiting %d\n",exit_thread);
 
         }
          
-        
-        for(i32 i=0;i<1;i++){
-              pthread_join(threads[i],NULL);
-              
-        }
+        ready=0;
+        pthread_mutex_unlock(&scanMutex);
 
         
+    }
+
+        
+    for(i32 i=0;i<NUM_OF_SCANNER_THREADS;i++){
+              pthread_join(threads[i],NULL);
+              
     }
 
     return NULL;
@@ -330,13 +402,14 @@ void *listen_for_arp_replies(void *arg){
             tv.tv_usec = 0; 
 
 
-            int select_result = select(sockfd + 1, &fds, NULL, NULL, &tv);
+            i32 select_result = select(sockfd + 1, &fds, NULL, NULL, &tv);
 
             //if there is nothing for q second exit this thread
 
             if(select_result==0){
                 if(count==3){
                     atomic_store(&done_scanning,true);
+
                     break;
                 }
                 count+=1;
@@ -399,10 +472,8 @@ void *listen_for_arp_replies(void *arg){
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
 
-    
     pthread_mutex_lock(&bufferMutex);
     push(hosts_buffer,&ip.s_addr);
-    sem_post(&buffer_full);
     pthread_mutex_unlock(&bufferMutex);
 
 
@@ -423,8 +494,6 @@ void generate_subnet_ip_addresses(port_range *range){
     hosts_buffer=malloc(sizeof(alive_hosts_buffer));
     initialize_buffer(hosts_buffer);
 
-    sem_init(&buffer_empty,0,MAX_HOSTS_BUFFER);
-    sem_init(&buffer_full,0,0);
 
     i32 sockfd=socket(AF_PACKET,SOCK_RAW,htons(ETH_P_ARP));
 
@@ -450,9 +519,6 @@ void generate_subnet_ip_addresses(port_range *range){
         pthread_t scan_ports;
 
       
-
-
-                    
         pthread_create(&arp_sender,NULL,&send_arp_requests,&sockfd);
         pthread_setname_np(arp_sender,"send_arp_requests");
 
@@ -461,6 +527,15 @@ void generate_subnet_ip_addresses(port_range *range){
 
         pthread_create(&scan_ports,NULL,&scan_ports_in_range,range);
         pthread_setname_np(scan_ports,"scan_ports");
+
+
+
+        for(i32 i=0;i<NUM_OF_SCANNER_THREADS;i++){
+             
+            pthread_create(&threads[i],NULL,&connect_to_server,NULL);
+            pthread_setname_np(threads[i],"connect_server");
+
+        }
 
 
         pthread_join(arp_lister,NULL);
