@@ -19,7 +19,7 @@
 #include "arp_request.h"
 
 
-#define NUM_OF_SCANNER_THREADS 1
+#define NUM_OF_SCANNER_THREADS 10
 
 /*
    for each alive hosts we scan a range of ports as given by the user
@@ -258,7 +258,8 @@ void *scan_ports_in_range(void *arg){
          pthread_mutex_lock(&bufferMutex);
 
         if(empty(hosts_buffer)){
-            
+             
+            // printf("We are here %d\n",atomic_load(&done_scanning));
             
             pthread_mutex_unlock(&bufferMutex);
             if(atomic_load(&done_scanning)){
@@ -291,9 +292,9 @@ void *scan_ports_in_range(void *arg){
         pthread_cond_broadcast(&startCond);
 
         while(done<NUM_OF_SCANNER_THREADS && !atomic_load(&done_scanning)){
-            printf("Here waiting %d\n",exit_thread);
+            // printf("Here waiting %d\n",atomic_load(&done_scanning));
             pthread_cond_wait(&doneCond,&scanMutex);
-            printf("Here done  waiting %d\n",exit_thread);
+            // printf("Here done  waiting %d\n",atomic_load(&done_scanning));
 
         }
          
