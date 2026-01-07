@@ -19,16 +19,7 @@
 #include "arp_request.h"
 
 
-#define NUM_OF_SCANNER_THREADS 10
-
-/*
-   for each alive hosts we scan a range of ports as given by the user
-   A port iterator:
-
-        current_port=shows which port is being scanned at the moment
-        start port=where scanning starts
-        end port=where scanning ends
-*/
+#define NUM_OF_SCANNER_THREADS 20
 
 
 pthread_t threads[NUM_OF_SCANNER_THREADS];
@@ -55,17 +46,31 @@ pthread_mutex_t bufferMutex=PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t startCond=PTHREAD_COND_INITIALIZER;
 pthread_cond_t doneCond=PTHREAD_COND_INITIALIZER;
 
+/*
 
-in_addr_t current_ip_address;//ip address of this machine
-in_addr_t current_alive_ip;//the address being scanned currently
+current_ip_address-->ip address of this machine
+current_alive_ip-->the address being scanned currently
+start_ip_address--> first ip address in the subnet
+current_ip-->for looping through the addresses
+end_ip_address-->last ip address in the subnet
+subnet_mask-->subnet mask of the subnet
+mac_address-->mac address of this machine
+
+*/
+
+in_addr_t current_ip_address;
+in_addr_t current_alive_ip;
 in_addr_t start_ip_address;
-in_addr_t current_ip;//for looping through the addresses
+in_addr_t current_ip;
 in_addr_t end_ip_address;
-in_addr_t subnet_mask;//subnet mask of the interface
-u8 mac_address[MAC_LENGTH];//mac address of this machine
+in_addr_t subnet_mask;
+u8 mac_address[MAC_LENGTH];
 
 
 
+
+//log file
+FILE *log_file;
 
 
 i32 get_interface_ip_mask() {
@@ -115,14 +120,10 @@ void *connect_to_server(void *arg){
 
    
     while(true){
-
-        
-
+       
+    
         pthread_mutex_lock(&scanMutex);
 
-        
-
-        
         if(exit_thread){
             pthread_mutex_unlock(&scanMutex); 
             break;
@@ -147,7 +148,7 @@ void *connect_to_server(void *arg){
            
            pthread_mutex_unlock(&scanMutex);
     
-            // printf("Scanning : %"PRIu16"\n",port);
+
     
             
             i32 sockfd=socket(AF_INET,SOCK_STREAM,0);
@@ -170,12 +171,14 @@ void *connect_to_server(void *arg){
                  continue;
             }
     
+
+            printf("\t\t\t\tscanning %"PRIu16 "\n",port);
               
             i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
     
             
             if(connect_status==0){
-                  printf("Port open %"PRIu16 "\n",port);
+                  fprintf(log_file,"\t\t\t\tPort open %"PRIu16 "\n",port);
             }else if(connect_status<0 && errno !=EINPROGRESS){
     
                  if(errno!=ECONNREFUSED){
@@ -194,8 +197,8 @@ void *connect_to_server(void *arg){
             FD_ZERO(&fds);
             FD_SET(sockfd,&fds);
     
-            tv.tv_sec=1;
-            tv.tv_usec=0;
+            tv.tv_sec=0;
+            tv.tv_usec=500000;
     
             i32 select_res=select(sockfd+1,NULL,&fds,NULL,&tv);
     
@@ -214,17 +217,17 @@ void *connect_to_server(void *arg){
     
                 if(error==0){
     
-                    printf("Port open %"PRIu16 "\n",port);
+                    fprintf(log_file,"\t\t\t\tPort open %"PRIu16 "\n",port);
                      
                 }
     
             }
     
-       
+            
              close(sockfd);
         }
 
-
+   
         pthread_mutex_lock(&scanMutex);
         done++;
         if(done==NUM_OF_SCANNER_THREADS){
@@ -244,7 +247,7 @@ void *connect_to_server(void *arg){
 
 void *scan_ports_in_range(void *arg){
     /*
-    
+      
       get the current ip,
       create an address
       spawn threads to connect to ports of this ip in a given range
@@ -259,7 +262,6 @@ void *scan_ports_in_range(void *arg){
 
         if(empty(hosts_buffer)){
              
-            // printf("We are here %d\n",atomic_load(&done_scanning));
             
             pthread_mutex_unlock(&bufferMutex);
             if(atomic_load(&done_scanning)){
@@ -277,6 +279,7 @@ void *scan_ports_in_range(void *arg){
 
 
         current_alive_ip=pop(hosts_buffer);
+        
         pthread_mutex_unlock(&bufferMutex);  
      
         
@@ -285,6 +288,12 @@ void *scan_ports_in_range(void *arg){
         
         
         pthread_mutex_lock(&scanMutex);
+
+        struct in_addr curr_ip;
+        curr_ip.s_addr=current_alive_ip;
+        
+         fprintf(log_file,"======================================== %s ==========================================\n",inet_ntoa(curr_ip));
+
         current_port=start_port;
         done=0;
         ready=1;
@@ -292,9 +301,7 @@ void *scan_ports_in_range(void *arg){
         pthread_cond_broadcast(&startCond);
 
         while(done<NUM_OF_SCANNER_THREADS && !atomic_load(&done_scanning)){
-            // printf("Here waiting %d\n",atomic_load(&done_scanning));
             pthread_cond_wait(&doneCond,&scanMutex);
-            // printf("Here done  waiting %d\n",atomic_load(&done_scanning));
 
         }
          
@@ -491,6 +498,13 @@ void *listen_for_arp_replies(void *arg){
 
 
 void generate_subnet_ip_addresses(port_range *range){
+
+    log_file=fopen("log.txt","w");
+
+    if(!log_file){
+        fprintf(stderr,"Failed to open the log file (%s)\n",strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 
     hosts_buffer=malloc(sizeof(alive_hosts_buffer));
     initialize_buffer(hosts_buffer);
