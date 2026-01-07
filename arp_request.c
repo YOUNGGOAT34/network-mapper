@@ -172,7 +172,6 @@ void *connect_to_server(void *arg){
             }
     
 
-            printf("\t\t\t\tscanning %"PRIu16 "\n",port);
               
             i32 connect_status=connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address));
     
@@ -197,8 +196,8 @@ void *connect_to_server(void *arg){
             FD_ZERO(&fds);
             FD_SET(sockfd,&fds);
     
-            tv.tv_sec=0;
-            tv.tv_usec=500000;
+            tv.tv_sec=1;
+            tv.tv_usec=0;
     
             i32 select_res=select(sockfd+1,NULL,&fds,NULL,&tv);
     

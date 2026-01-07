@@ -2,4 +2,12 @@
 				Port open 23
 				Port open 53
 				Port open 80
-======================================== 192.168.100.19 ==========================================
+				Port open 17998
+				Port open 37443
+				Port open 37444
+				Port open 23
+				Port open 53
+				Port open 80
+				Port open 17998
+				Port open 37444
+				Port open 37443
