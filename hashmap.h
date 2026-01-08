@@ -11,10 +11,11 @@ typedef unsigned char u8;
 typedef unsigned short int u16;
 typedef unsigned int u32;
 typedef unsigned long int u64;
+typedef char i8;
 
 typedef struct{
 
-   char *string_ip;
+   i8 *string_ip;
    in_addr_t int_ip;
 
 
@@ -23,6 +24,6 @@ typedef struct{
 
 u32 hash(char *ip);
 bool insert(HOST *host);
-
+HOST *find(i8 *);
 
 #endif

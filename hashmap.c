@@ -3,8 +3,6 @@
 
 
 
-
-
 HOST *table[MAX_TABLE];
 
 u32 hash(char *ip){
@@ -29,4 +27,15 @@ bool insert(HOST *host){
    table[index]=host;
    return true;
 
+}
+
+HOST *find(i8 *ip){
+     u32 index=hash(ip);
+
+     if(table[index]!=NULL && strcmp(ip,table[index]->string_ip)){
+     
+        return table[index];
+     }
+
+     return NULL;
 }

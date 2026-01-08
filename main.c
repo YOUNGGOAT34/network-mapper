@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "arp_request.h"
 #include "hashmap.h"
+#include <arpa/inet.h>
 
 
 
@@ -29,8 +30,28 @@ int main(i32 argc,const i8 *argv[]) {
 
     // generate_subnet_ip_addresses(range);
 
-    printf("%d\n",hash("192.168.1.1"));
 
+
+    struct in_addr int_ip;
+    char *ip="192.168.1.1";
+
+    inet_aton(ip,&int_ip);
+
+    HOST *host=malloc(sizeof(HOST));
+    host->int_ip=int_ip.s_addr;
+    host->string_ip=ip;
+
+    if(insert(host)){
+       printf("Inserted successfully\n");
+    }else{
+       printf("Failed to insert\n");
+    }
+
+    if(find(ip)){
+        printf("Found it \n");
+    }else{
+       printf("Not found\n");
+    }
 
    
     return 0;
