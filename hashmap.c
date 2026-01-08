@@ -3,6 +3,10 @@
 
 
 
+
+
+HOST *table[MAX_TABLE];
+
 u32 hash(char *ip){
     u32 hash_value=0;
     u32 len=strlen(ip);
@@ -12,4 +16,17 @@ u32 hash(char *ip){
        hash_value=(hash_value*ip[i])%MAX_TABLE;
     } 
     return hash_value;
+}
+
+bool insert(HOST *host){
+   
+   if(!host) return false;
+
+   u32 index=hash(host->string_ip);
+
+   if(table[index]!=NULL) return false;
+
+   table[index]=host;
+   return true;
+
 }

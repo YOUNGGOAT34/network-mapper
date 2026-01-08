@@ -1,6 +1,9 @@
 #ifndef HASHMAP_H
 #define HASHMAP_H
 #include <stdlib.h>
+#include <stdbool.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #define MAX_TABLE 250
 
@@ -11,14 +14,15 @@ typedef unsigned long int u64;
 
 typedef struct{
 
-   char ip[MAX_TABLE];
-   char *ip_;
+   char *string_ip;
+   in_addr_t int_ip;
 
 
-}ACTIVE_HOSTS;
+}HOST;
 
 
 u32 hash(char *ip);
+bool insert(HOST *host);
 
 
 #endif
