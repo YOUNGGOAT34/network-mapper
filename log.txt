@@ -1,13 +1,7 @@
-======================================== 192.168.100.1 ==========================================
+======================================== 192.168.1.1 ==========================================
+				Port open 21
 				Port open 23
-				Port open 53
+				Port open 22
 				Port open 80
-				Port open 17998
-				Port open 37443
-				Port open 37444
-				Port open 23
-				Port open 53
-				Port open 80
-				Port open 17998
-				Port open 37444
-				Port open 37443
+				Port open 139
+				Port open 445
