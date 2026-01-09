@@ -6,6 +6,7 @@
 #include "arp_request.h"
 #include "hashmap.h"
 #include <arpa/inet.h>
+#include <string.h>
 
 
 
@@ -41,17 +42,30 @@ int main(i32 argc,const i8 *argv[]) {
     host->int_ip=int_ip.s_addr;
     host->string_ip=ip;
 
-    if(insert(host)){
-       printf("Inserted successfully\n");
-    }else{
-       printf("Failed to insert\n");
+    struct in_addr addr;
+    char ip_buf[16];
+
+    for (int i = 1; i <= 254; i++) {
+        snprintf(ip_buf, sizeof(ip_buf), "192.168.1.%d", i);
+
+        inet_aton(ip_buf, &addr);
+
+        HOST *host = malloc(sizeof(HOST));
+        if (!host) {
+            perror("malloc");
+            return 1;
+        }
+
+        host->int_ip = addr.s_addr;
+        
+        host->string_ip = strdup(ip_buf);  // REQUIRED
+        
+
+        insert(host);
     }
 
-    if(find(ip)){
-        printf("Found it \n");
-    }else{
-       printf("Not found\n");
-    }
+
+    print_table();
 
    
     return 0;

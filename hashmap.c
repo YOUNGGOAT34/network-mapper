@@ -1,5 +1,6 @@
 #include "hashmap.h"
 #include <string.h>
+#include <stdio.h>
 
 
 
@@ -26,9 +27,6 @@ bool insert(HOST *host){
 
    table[index]=host;
 
-   if(table[index]!=NULL) return false;
-
-   table[index]=host;
    return true;
 
 }
@@ -36,10 +34,40 @@ bool insert(HOST *host){
 HOST *find(i8 *ip){
      u32 index=hash(ip);
 
-     if(table[index]!=NULL && strcmp(ip,table[index]->string_ip)==0){
-     
-        return table[index];
+     HOST *tmp=table[index];
+
+     while(tmp && strcmp(tmp->string_ip,ip)!=0){
+          tmp=tmp->next;
      }
 
-     return NULL;
+     return tmp;
+}
+
+void print_table(){
+
+    for (i32 i=0;i<MAX_TABLE;i++){
+
+         printf("[%d] ",i);
+       
+         HOST *curr=table[i];
+         if(!curr){
+             printf(" NULL\n");
+             continue;
+         }
+         while(curr!=NULL){
+               printf("%s",curr->string_ip);
+
+              
+              if(curr->next){
+
+               printf("--->");
+                 
+              }
+
+              curr=curr->next;
+         }
+
+         printf("\n");
+    }
+
 }
