@@ -32,7 +32,7 @@ bool insert(HOST *host){
 HOST *find(i8 *ip){
      u32 index=hash(ip);
 
-     if(table[index]!=NULL && strcmp(ip,table[index]->string_ip)){
+     if(table[index]!=NULL && strcmp(ip,table[index]->string_ip)==0){
      
         return table[index];
      }
