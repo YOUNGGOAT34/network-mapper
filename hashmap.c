@@ -4,9 +4,10 @@
 
 
 
+
 HOST *table[MAX_TABLE];
 
-u32 hash(char *ip){
+u32 hash(i8 *ip){
     u32 hash_value=0;
     u32 len=strlen(ip);
 

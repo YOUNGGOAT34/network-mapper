@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdbool.h>
+#include "hashmap.h"
 
 
 #define RESPONSE_BUFFER 65536
@@ -22,6 +23,7 @@ typedef unsigned int u32;
 typedef unsigned long int u64;
 
 
+
 //they are signed by default but making them explicit makes them readable...
 typedef  char i8;
 typedef signed int i32;
@@ -38,6 +40,7 @@ typedef struct {
    in_addr_t hosts[MAX_HOSTS_BUFFER];
 }alive_hosts_buffer;
 
+extern HOST *table[MAX_TABLE];
 
 
 u8 *create_raw_ethernet_bytes(in_addr_t *target_ip);

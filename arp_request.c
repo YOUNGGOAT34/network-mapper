@@ -21,6 +21,15 @@
 
 #define NUM_OF_SCANNER_THREADS 20
 
+/*
+   Since I noticed that hosts might send multiple arp responses,
+   I will store each ip that has replied in a hashmap(for O(1) look up)
+   to avoid processing them multiple times
+   I will just drop the replies if I have already processed them
+*/
+
+
+
 
 pthread_t threads[NUM_OF_SCANNER_THREADS];
 
@@ -439,6 +448,8 @@ void *listen_for_arp_replies(void *arg){
             break;
         }
 
+       
+
         struct ethhdr *eth = (struct ethhdr *)response_buffer;
 
         if (ntohs(eth->h_proto) != ETH_P_ARP){
@@ -460,6 +471,18 @@ void *listen_for_arp_replies(void *arg){
     u8 *spa = sha + MAC_LENGTH;
     u8 *tha = spa + IP4_LENGTH;
     u8 *tpa = tha + MAC_LENGTH;
+    
+     if(find((i8 *)spa)){
+         continue;
+     }
+
+     HOST *host=malloc(sizeof(HOST));
+     
+     if(!host){
+          fprintf(stderr,"Failed to allocate memory for the host (%s)\n",strerror(errno));
+          atomic_store(&done_scanning,true);
+          exit(EXIT_FAILURE);
+     }
 
     //check if the response was intended for this machine
 
@@ -470,6 +493,7 @@ void *listen_for_arp_replies(void *arg){
     u32 spa_;
     memcpy(&spa_,spa,IP4_LENGTH);
 
+
     
     //check if the arp response comes from the host within the range
     if(ntohl(spa_)<start_ip_address || ntohl(spa_)>end_ip_address){
@@ -478,6 +502,11 @@ void *listen_for_arp_replies(void *arg){
 
     struct in_addr ip;
     memcpy(&ip, spa, IP4_LENGTH);
+
+    host->int_ip=ip.s_addr;
+    host->string_ip=strdup((i8 *)spa);
+
+    insert(host);
 
     pthread_mutex_lock(&bufferMutex);
     push(hosts_buffer,&ip.s_addr);

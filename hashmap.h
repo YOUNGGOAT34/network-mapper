@@ -25,7 +25,9 @@ typedef struct HOST{
 }HOST;
 
 
-u32 hash(char *ip);
+
+
+u32 hash(i8 *ip);
 bool insert(HOST *host);
 HOST *find(i8 *);
 void print_table();
