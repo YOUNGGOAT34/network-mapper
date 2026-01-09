@@ -22,6 +22,10 @@ bool insert(HOST *host){
 
    u32 index=hash(host->string_ip);
 
+   host->next=table[index];
+
+   table[index]=host;
+
    if(table[index]!=NULL) return false;
 
    table[index]=host;
